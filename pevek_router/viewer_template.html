@@ -1,0 +1,350 @@
+<title>Ледовый маршрутизатор Певек</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: штурманский планшет — карта-хозяин слева, сводка по вариантам справа, профиль рейса под картой */
+:root{
+  --bg:#eef2f5; --panel:#ffffff; --fg:#14212b; --muted:#5b6b78; --line:#d3dce3;
+  --sea:#cfe0ec; --land:#b9b2a4; --land-edge:#6f675b; --grid:rgba(20,33,43,.18);
+  --accent:#0b5f8a;
+  --r-fast:#c0157a; --r-bal:#5b3bc4; --r-eco:#14212b; --r-base:#6b7780;
+  --warn-bg:#fff4dc; --warn-fg:#7a4b00; --block-bg:#fde7e4; --block-fg:#8f1d12;
+  --good:#1f7a4d; --bad:#b0331f;
+  --f-ui:"Golos Text", "Segoe UI", system-ui, sans-serif;
+  --f-data:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161c; --panel:#152129; --fg:#e4edf3; --muted:#93a5b3; --line:#27363f;
+  --sea:#1d3443; --land:#3b3a35; --land-edge:#8b8577; --grid:rgba(228,237,243,.16);
+  --accent:#5fb4e0; --r-fast:#ff5fb0; --r-bal:#a891ff; --r-eco:#f2f6f8; --r-base:#9aa7b0;
+  --warn-bg:#3a2c0e; --warn-fg:#f3c873; --block-bg:#3c1712; --block-fg:#ffaa9c;
+  --good:#5bd096; --bad:#ff8a73; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e161c; --panel:#152129; --fg:#e4edf3; --muted:#93a5b3; --line:#27363f;
+  --sea:#1d3443; --land:#3b3a35; --land-edge:#8b8577; --grid:rgba(228,237,243,.16);
+  --accent:#5fb4e0; --r-fast:#ff5fb0; --r-bal:#a891ff; --r-eco:#f2f6f8; --r-base:#9aa7b0;
+  --warn-bg:#3a2c0e; --warn-fg:#f3c873; --block-bg:#3c1712; --block-fg:#ffaa9c;
+  --good:#5bd096; --bad:#ff8a73; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);font-size:14px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0}
+.banner{background:var(--warn-bg);color:var(--warn-fg);border-radius:6px;padding:8px 12px;font-size:13px}
+.controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end}
+.ctl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ctl label,.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+select,input[type=number]{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+input[type=number]{width:110px;font-family:var(--f-data)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel)}
+.seg button{font:inherit;border:0;background:transparent;color:var(--fg);padding:6px 12px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--panel)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;align-items:start}
+@media (max-width:1000px){.main{grid-template-columns:minmax(0,1fr)}}
+.mapbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+canvas{display:block;width:100%}
+.timebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.timebar input[type=range]{flex:1;min-width:160px;accent-color:var(--accent)}
+.play{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:6px;padding:4px 12px;cursor:pointer}
+.tlabel{font-family:var(--f-data);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);align-items:center}
+.sw{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
+.ramp{display:inline-block;width:140px;height:10px;border-radius:2px;vertical-align:-1px;margin:0 6px;border:1px solid var(--line)}
+.rkey{display:inline-flex;align-items:center;gap:6px}
+.rline{display:inline-block;width:22px;height:0;border-top:3px solid}
+aside{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+.card h2{font-size:14px;margin:0 0 8px;font-weight:600}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:6px 5px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+td{font-family:var(--f-data);font-size:12.5px}
+td.name{font-family:var(--f-ui);font-weight:500;white-space:normal}
+tbody tr{cursor:pointer}
+tbody tr[aria-selected=true]{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.d{font-size:11px;display:block}
+.d.good{color:var(--good)} .d.bad{color:var(--bad)}
+.block{background:var(--block-bg);color:var(--block-fg);border-radius:6px;padding:10px 12px}
+.econ{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+.note{font-size:12px;color:var(--muted);margin:8px 0 0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-data);text-align:right}
+.profile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.profile h2{font-size:14px;margin:0 0 6px;font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Ледовый маршрутизатор Певек</h1>
+    <p class="sub">Восточно-Сибирское море · судно ледового класса Л2 · оптимизация по топливу и времени</p>
+  </header>
+  <div class="banner" id="srcBanner" hidden></div>
+
+  <div class="controls">
+    <div class="ctl"><label for="selRoute">Маршрут</label><select id="selRoute"></select></div>
+    <div class="ctl"><label for="selDep">Отход</label><select id="selDep"></select></div>
+    <div class="ctl"><span class="lbl">Слой</span>
+      <div class="seg" role="group" aria-label="Слой карты">
+        <button type="button" data-layer="ice" aria-pressed="true">Лёд</button>
+        <button type="button" data-layer="hs" aria-pressed="false">Волнение</button>
+        <button type="button" data-layer="wind" aria-pressed="false">Ветер</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="mapbox">
+      <canvas id="map" aria-label="Карта района с маршрутами"></canvas>
+      <div class="timebar">
+        <button class="play" id="btnPlay" type="button">▶ Пуск</button>
+        <input type="range" id="tslider" min="0" max="0" value="0" aria-label="Срок прогноза">
+        <span class="tlabel" id="tlabel"></span>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="legend" id="rlegend"></div>
+    </div>
+
+    <aside>
+      <div class="card">
+        <h2>Сравнение вариантов</h2>
+        <div id="kpi"></div>
+        <div class="econ">
+          <div class="ctl"><label for="inFuel">Топливо, $/т</label><input type="number" id="inFuel" value="620" min="0" step="10"></div>
+          <div class="ctl"><label for="inDay">Сутки судна, $</label><input type="number" id="inDay" value="18000" min="0" step="500"></div>
+        </div>
+        <p class="note">Затраты = топливо × цена + время × ставка, одинаково для всех вариантов. Δ — к кратчайшему пути полным ходом. Нажмите на строку, чтобы увидеть профиль рейса.</p>
+      </div>
+      <div class="card">
+        <h2>Судно</h2>
+        <dl class="kv" id="shipkv"></dl>
+      </div>
+    </aside>
+  </div>
+
+  <div class="profile">
+    <h2 id="profTitle">Профиль рейса</h2>
+    <canvas id="prof" aria-label="Скорость, лёд и волнение по ходу рейса"></canvas>
+    <div class="legend">
+      <span class="rkey"><span class="rline" style="border-color:var(--accent)"></span>Скорость по воде, уз</span>
+      <span class="rkey"><span class="sw" style="background:#f2de4b;border-color:transparent"></span>Сплочённость льда, баллы</span>
+      <span class="rkey"><span class="rline" style="border-color:var(--muted);border-top-style:dashed"></span>Высота волны, м</span>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="data">/*__DATA__*/</script>
+<script>
+(function(){
+const D = JSON.parse(document.getElementById('data').textContent);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const F = D.fields, G = D.grid;
+const nT = F.times.length, nLa = F.lat.length, nLo = F.lon.length;
+function b64(s){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;}
+const SIC=b64(F.sic), HS=b64(F.hs), WIND=b64(F.wind);
+// маска суши (packbits, старший бит первым)
+const [gLa,gLo]=G.shape, lb=b64(G.land), LAND=new Uint8Array(gLa*gLo);
+for(let k=0;k<LAND.length;k++) LAND[k]=(lb[k>>3]>>(7-(k&7)))&1;
+
+const LAT0=G.lat[0], LAT1=G.lat[G.lat.length-1], LON0=G.lon[0], LON1=G.lon[G.lon.length-1];
+const KX=Math.cos((LAT0+LAT1)/2*Math.PI/180);
+const ASPECT=((LON1-LON0)*KX)/(LAT1-LAT0);
+
+const STRAT_COLOR={fast:'--r-fast',balanced:'--r-bal',eco:'--r-eco',shortest:'--r-base'};
+const state={route:null,dep:0,layer:'ice',t:0,sel:'balanced',playing:false};
+
+// ---- источник данных
+if((D.meta.source||'').toUpperCase().includes('SYNTHETIC')){
+  const b=$('srcBanner'); b.hidden=false;
+  b.textContent='Демо-сценарий: поля льда, ветра и волн синтетические (20–25 октября), они нужны для проверки конвейера и не описывают реальную обстановку. Для реального расчёта запустите загрузку ERA5 и Copernicus Marine.';
+}
+
+// ---- судно
+const S=D.meta.ship;
+const shipRows=[['Класс',S.ice_class+' (≈ Ice2)'],['Длина × ширина × осадка',`${S.L} × ${S.B} × ${S.T} м`],['Главный двигатель',`${S.mcr_kw} кВт`],['Сдаточная скорость',`${S.v_service_kn} уз`],['Самостоятельно во льду',`до ${Math.round(S.ice_c_max*10)} баллов, ≤ ${S.ice_h_max} м`],['Предел по волне',`Hs ≤ ${S.hs_max} м`]];
+$('shipkv').innerHTML=shipRows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+// ---- селекторы
+const routes=[...new Set(D.results.map(r=>r.route))];
+$('selRoute').innerHTML=routes.map(r=>{const it=D.results.find(x=>x.route===r);return `<option value="${r}">${it.origin} → ${it.dest}</option>`}).join('');
+state.route=routes[0];
+function fillDep(){
+  const items=D.results.filter(r=>r.route===state.route);
+  $('selDep').innerHTML=items.map(r=>`<option value="${r.depart_h}">${fmtTime(r.depart_time)} UTC${r.blocked_reason?' · закрыто':''}</option>`).join('');
+  if(!items.some(r=>r.depart_h==state.dep)) state.dep=items[0].depart_h;
+  $('selDep').value=state.dep;
+}
+function fmtTime(s){const d=new Date(s+'Z');return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'});}
+const stepH=(new Date(F.times[1]+'Z')-new Date(F.times[0]+'Z'))/3.6e6;
+$('tslider').max=nT-1;
+
+// ---- цвета слоёв
+const WMO=[[0.1,null],[0.35,[143,214,148]],[0.65,[242,222,75]],[0.85,[240,138,43]],[1.01,[216,58,46]]];
+function iceColor(c){for(const [hi,col] of WMO) if(c<hi) return col; return WMO[4][1];}
+function ramp(stops,x){x=Math.max(0,Math.min(1,x));for(let i=1;i<stops.length;i++){if(x<=stops[i][0]){const a=stops[i-1],b=stops[i],f=(x-a[0])/(b[0]-a[0]);return [0,1,2].map(k=>Math.round(a[1][k]+f*(b[1][k]-a[1][k])));}}return stops[stops.length-1][1];}
+const HS_RAMP=[[0,[220,236,246]],[0.25,[127,190,228]],[0.5,[64,120,200]],[0.75,[118,62,170]],[1,[150,24,90]]];
+const W_RAMP=[[0,[236,244,240]],[0.3,[150,210,170]],[0.55,[245,200,90]],[0.8,[225,110,50]],[1,[160,30,40]]];
+
+// ---- карта
+const cv=$('map'), ctx=cv.getContext('2d');
+const off=document.createElement('canvas'); off.width=nLo; off.height=nLa;
+const offL=document.createElement('canvas'); offL.width=gLo; offL.height=gLa;
+let mapW=0,mapH=0,dpr=1;
+function proj(lat,lon){return [ (lon-LON0)/(LON1-LON0)*mapW, (LAT1-lat)/(LAT1-LAT0)*mapH ];}
+function sizeMap(){
+  dpr=window.devicePixelRatio||1; mapW=cv.clientWidth; mapH=Math.round(mapW/ASPECT);
+  cv.style.height=mapH+'px'; cv.width=Math.round(mapW*dpr); cv.height=Math.round(mapH*dpr);
+  // суша
+  const lctx=offL.getContext('2d'), img=lctx.createImageData(gLo,gLa); const lc=hex(css('--land'));
+  for(let i=0;i<gLa;i++)for(let j=0;j<gLo;j++){const k=i*gLo+j, p=((gLa-1-i)*gLo+j)*4; if(LAND[k]){img.data[p]=lc[0];img.data[p+1]=lc[1];img.data[p+2]=lc[2];img.data[p+3]=255;}}
+  lctx.putImageData(img,0,0);
+}
+function hex(c){c=c.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');return [0,2,4].map(i=>parseInt(c.substr(i,2),16));}
+function drawField(){
+  const octx=off.getContext('2d'), img=octx.createImageData(nLo,nLa), base=state.t*nLa*nLo;
+  for(let i=0;i<nLa;i++)for(let j=0;j<nLo;j++){
+    const k=base+i*nLo+j, p=((nLa-1-i)*nLo+j)*4; let col=null,a=210;
+    if(state.layer==='ice'){const c=SIC[k]/250; col=iceColor(c);}
+    else if(state.layer==='hs'){const h=HS[k]/25; if(h>0.05){col=ramp(HS_RAMP,h/6); a=Math.min(220,60+h*90);} }
+    else {const w=WIND[k]/8; col=ramp(W_RAMP,w/25); a=170;}
+    if(col){img.data[p]=col[0];img.data[p+1]=col[1];img.data[p+2]=col[2];img.data[p+3]=a;}
+  }
+  octx.putImageData(img,0,0);
+}
+function currentItem(){return D.results.find(r=>r.route===state.route&&r.depart_h==state.dep);}
+function shipPos(v,relH){
+  const t=v.t_hours; if(relH<0||relH>t[t.length-1]) return null;
+  for(let i=1;i<t.length;i++) if(relH<=t[i]){const f=(relH-t[i-1])/Math.max(1e-9,t[i]-t[i-1]);return [v.lat[i-1]+f*(v.lat[i]-v.lat[i-1]), v.lon[i-1]+f*(v.lon[i]-v.lon[i-1])];}
+  return null;
+}
+function render(){
+  const c=ctx; c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,mapW,mapH);
+  c.fillStyle=css('--sea'); c.fillRect(0,0,mapW,mapH);
+  drawField(); c.imageSmoothingEnabled=state.layer!=='ice'; c.drawImage(off,0,0,mapW,mapH);
+  c.imageSmoothingEnabled=false; c.drawImage(offL,0,0,mapW,mapH);
+  // сетка
+  c.strokeStyle=css('--grid'); c.lineWidth=1; c.fillStyle=css('--muted'); c.font='11px '+css('--f-data');
+  for(let lo=154;lo<LON1;lo+=4){const [x]=proj(LAT0,lo); c.beginPath();c.moveTo(x,0);c.lineTo(x,mapH);c.stroke(); c.fillText(lo+'°',x+3,mapH-4);}
+  for(let la=69;la<LAT1;la+=1){const [,y]=proj(la,LON0); c.beginPath();c.moveTo(0,y);c.lineTo(mapW,y);c.stroke(); c.fillText(la+'°N',3,y-3);}
+  // стрелки ветра
+  if(state.layer==='wind'){
+    c.strokeStyle=css('--fg'); c.lineWidth=1.1; const U=F.u[state.t],V=F.v[state.t];
+    for(let i=0;i<F.uv_lat.length;i++)for(let j=0;j<F.uv_lon.length;j++){
+      const [x,y]=proj(F.uv_lat[i],F.uv_lon[j]); const u=U[i][j],v=V[i][j],s=Math.hypot(u,v); if(s<0.5)continue;
+      const L=Math.min(22,4+s*1.0)*(mapW/900+0.4), dx=u/s*L, dy=-v/s*L;
+      c.beginPath();c.moveTo(x-dx/2,y-dy/2);c.lineTo(x+dx/2,y+dy/2);
+      const ang=Math.atan2(dy,dx),hx=x+dx/2,hy=y+dy/2; c.lineTo(hx-5*Math.cos(ang-0.5),hy-5*Math.sin(ang-0.5)); c.moveTo(hx,hy); c.lineTo(hx-5*Math.cos(ang+0.5),hy-5*Math.sin(ang+0.5)); c.stroke();
+    }
+  }
+  // маршруты
+  const it=currentItem(), relH=(state.t*stepH)-state.dep;
+  const order=['shortest','eco','balanced','fast'];
+  if(it){
+    for(const key of order){const v=it.variants.find(x=>x.strategy===key); if(!v||!v.lat||!v.lat.length) continue;
+      const pts=v.lat.map((la,i)=>proj(la,v.lon[i])); const sel=state.sel===key;
+      c.lineJoin='round'; c.lineCap='round';
+      c.setLineDash(key==='shortest'?[7,5]:[]);
+      c.strokeStyle=css('--panel'); c.lineWidth=sel?6.5:5; c.beginPath(); pts.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p)); c.stroke();
+      c.strokeStyle=css(STRAT_COLOR[key]); c.lineWidth=sel?3.5:2.2; c.beginPath(); pts.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p)); c.stroke();
+      c.setLineDash([]);
+      const sp=shipPos(v,relH); if(sp){const [x,y]=proj(...sp); c.fillStyle=css(STRAT_COLOR[key]); c.strokeStyle=css('--panel'); c.lineWidth=2; c.beginPath(); c.arc(x,y,sel?6:4.5,0,7); c.fill(); c.stroke();}
+    }
+  }
+  // пункты
+  c.font='600 12px '+css('--f-ui');
+  for(const [k,p] of Object.entries(D.meta.points)){
+    if(!it||!(it.route.startsWith(k+'-')||it.route.endsWith('-'+k))) continue;
+    const [x,y]=proj(p.lat,p.lon); c.fillStyle=css('--fg'); c.strokeStyle=css('--panel'); c.lineWidth=2;
+    c.beginPath(); c.rect(x-4,y-4,8,8); c.fill(); c.stroke();
+    const tw=c.measureText(p.name).width; let tx=x+8; if(tx+tw>mapW-4) tx=x-8-tw;
+    c.lineWidth=3; c.strokeText(p.name,tx,y-7); c.fillText(p.name,tx,y-7);
+  }
+  $('tlabel').textContent=fmtTime(F.times[state.t])+' UTC · '+(relH>=0?'+'+relH.toFixed(0)+' ч от отхода':(relH).toFixed(0)+' ч до отхода');
+}
+
+// ---- легенды
+function legend(){
+  const L=$('legend');
+  if(state.layer==='ice'){
+    L.innerHTML='<span class="lbl">Сплочённость, баллы (цвета ВМО)</span>'+[['<1',null],['1–3',WMO[1][1]],['4–6',WMO[2][1]],['7–8',WMO[3][1]],['9–10',WMO[4][1]]].map(([t,c])=>`<span><span class="sw" style="background:${c?`rgb(${c})`:'var(--sea)'}"></span>${t}</span>`).join('');
+  } else {
+    const st=state.layer==='hs'?HS_RAMP:W_RAMP, g=st.map(([x,c])=>`rgb(${c}) ${x*100}%`).join(',');
+    L.innerHTML=`<span class="lbl">${state.layer==='hs'?'Значительная высота волн':'Скорость ветра 10 м'}</span><span>0</span><span class="ramp" style="background:linear-gradient(90deg,${g})"></span><span>${state.layer==='hs'?'6 м':'25 м/с'}</span>`;
+  }
+  const names={fast:'Быстрый',balanced:'Сбалансированный',eco:'Экономичный',shortest:'Кратчайший, полный ход'};
+  $('rlegend').innerHTML=Object.entries(names).map(([k,n])=>`<span class="rkey"><span class="rline" style="border-color:var(${STRAT_COLOR[k]});${k==='shortest'?'border-top-style:dashed':''}"></span>${n}</span>`).join('');
+}
+
+// ---- таблица
+const nf1=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1,minimumFractionDigits:1});
+const nf0=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0});
+function delta(v,b,lowerBetter=true){if(b==null||!isFinite(b)||b===0)return '';const p=(v-b)/b*100; if(Math.abs(p)<0.5) return '<span class="d">≈</span>'; const good=lowerBetter?p<0:p>0; return `<span class="d ${good?'good':'bad'}">${p>0?'+':''}${nf1.format(p)} %</span>`;}
+function table(){
+  const it=currentItem(), box=$('kpi');
+  if(!it){box.innerHTML='';return;}
+  if(it.blocked_reason){box.innerHTML=`<div class="block"><strong>Самостоятельный рейс невозможен.</strong><br>${it.blocked_reason[0].toUpperCase()+it.blocked_reason.slice(1)}.</div>`;return;}
+  const fp=+$('inFuel').value||0, day=+$('inDay').value||0, cost=v=>v.fuel_t*fp+v.hours*day/24;
+  const base=it.variants.find(v=>v.strategy==='shortest');
+  const rows=it.variants.filter(v=>v.lat&&v.lat.length).map(v=>{
+    const vavg=v.dist_nm/v.hours;
+    return `<tr data-k="${v.strategy}" aria-selected="${state.sel===v.strategy}" tabindex="0">
+      <td class="name"><span class="rline" style="border-color:var(${STRAT_COLOR[v.strategy]});${v.strategy==='shortest'?'border-top-style:dashed':''};width:14px;margin-right:6px;vertical-align:4px"></span><span style="white-space:nowrap">${v.label}</span><span class="d" style="color:var(--muted);font-family:var(--f-data)">${nf0.format(v.dist_nm)} миль · ${nf1.format(vavg)} уз</span></td>
+      <td>${nf1.format(v.hours)}${v.strategy!=='shortest'?delta(v.hours,base&&base.hours):''}</td>
+      <td>${nf1.format(v.fuel_t)}${v.strategy!=='shortest'?delta(v.fuel_t,base&&base.fuel_t):''}</td>
+      <td>${nf1.format(cost(v)/1000)}${v.strategy!=='shortest'&&base?delta(cost(v),cost(base)):''}</td>
+    </tr>`;}).join('');
+  box.innerHTML=`<div class="tbl"><table><thead><tr><th>Вариант</th><th>Время, ч</th><th>Топливо, т</th><th>Тыс. $</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  box.querySelectorAll('tbody tr').forEach(tr=>{const pick=()=>{state.sel=tr.dataset.k;table();render();profile();};tr.onclick=pick;tr.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};});
+}
+
+// ---- профиль рейса
+const pc=$('prof'), pctx=pc.getContext('2d');
+function profile(){
+  const it=currentItem(); const W=pc.clientWidth, H=Math.max(170,Math.min(240,W*0.22)); pc.style.height=H+'px'; pc.width=W*dpr; pc.height=H*dpr;
+  const c=pctx; c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,H);
+  const v=it&&it.variants.find(x=>x.strategy===state.sel);
+  if(!v||!v.ts||!v.ts.length){$('profTitle').textContent='Профиль рейса'; c.fillStyle=css('--muted'); c.font='13px '+css('--f-ui'); c.fillText('Нет рейса для выбранного срока отхода.',12,30); return;}
+  $('profTitle').textContent='Профиль рейса: '+v.label.toLowerCase();
+  const m={l:40,r:40,t:22,b:26}, pw=W-m.l-m.r, ph=H-m.t-m.b, T=v.hours;
+  const X=t=>m.l+t/T*pw, Yv=s=>m.t+ph-(s/16)*ph, Yc=x=>m.t+ph-x*ph;
+  c.font='11px '+css('--f-data'); c.fillStyle=css('--muted'); c.strokeStyle=css('--grid'); c.lineWidth=1;
+  for(let s=0;s<=16;s+=4){const y=Yv(s); c.beginPath();c.moveTo(m.l,y);c.lineTo(m.l+pw,y);c.stroke(); c.textAlign='right'; c.fillText(s,m.l-6,y+4);}
+  c.textAlign='left'; for(let b=0;b<=10;b+=5){c.fillText(b,m.l+pw+6,Yc(b/10)+4);} c.textAlign='right'; c.fillText('баллы',W-2,11);
+  const stepT=T>30?6:3; c.textAlign='center'; for(let t=0;t<=T+0.01;t+=stepT) c.fillText(t+' ч',X(t),H-8);
+  // сплочённость — заливка цветом ВМО по участкам
+  let prev=0; for(let i=0;i<v.ts.length;i++){const s=v.sic[i]; if(s>=0.1){const col=iceColor(s); c.fillStyle=`rgba(${col},0.75)`; c.fillRect(X(prev),Yc(s),Math.max(1,X(v.ts[i])-X(prev)),Yc(0)-Yc(s));} prev=v.ts[i];}
+  // высота волны — в метрах на левой шкале
+  c.setLineDash([4,3]); c.strokeStyle=css('--muted'); c.lineWidth=1.5; c.beginPath(); v.ts.forEach((t,i)=>{const y=Yv(v.hs[i]); i?c.lineTo(X(t),y):c.moveTo(X(t),y);}); c.stroke(); c.setLineDash([]);
+  // скорость
+  c.strokeStyle=css('--accent'); c.lineWidth=2.2; c.beginPath(); v.ts.forEach((t,i)=>{const y=Yv(v.speed_kn[i]); i?c.lineTo(X(t),y):c.moveTo(X(t),y);}); c.stroke();
+  // текущий момент
+  const relH=state.t*stepH-state.dep; if(relH>=0&&relH<=T){c.strokeStyle=css('--fg'); c.lineWidth=1; c.beginPath(); c.moveTo(X(relH),m.t); c.lineTo(X(relH),m.t+ph); c.stroke();}
+  c.textAlign='left'; c.fillStyle=css('--muted'); c.fillText('уз · м',2,11);
+}
+
+// ---- события
+function setLayer(l){state.layer=l; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.layer===l)); legend(); render();}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setLayer(b.dataset.layer));
+$('selRoute').onchange=e=>{state.route=e.target.value; fillDep(); jumpToDep(); refresh();};
+$('selDep').onchange=e=>{state.dep=+e.target.value; jumpToDep(); refresh();};
+$('tslider').oninput=e=>{state.t=+e.target.value; render(); profile();};
+$('inFuel').oninput=table; $('inDay').oninput=table;
+function jumpToDep(){state.t=Math.min(nT-1,Math.round(state.dep/stepH)); $('tslider').value=state.t;}
+let timer=null;
+$('btnPlay').onclick=()=>{state.playing=!state.playing; $('btnPlay').textContent=state.playing?'❚❚ Пауза':'▶ Пуск';
+  if(state.playing){timer=setInterval(()=>{state.t=(state.t+1)%nT; $('tslider').value=state.t; render(); profile();},450);} else clearInterval(timer);};
+function refresh(){table(); render(); profile();}
+let rz; window.addEventListener('resize',()=>{clearTimeout(rz); rz=setTimeout(()=>{sizeMap(); refresh();},120);});
+const mq=window.matchMedia('(prefers-color-scheme: dark)'); mq.addEventListener&&mq.addEventListener('change',()=>{sizeMap();refresh();legend();});
+new MutationObserver(()=>{sizeMap();refresh();legend();}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+fillDep(); jumpToDep(); sizeMap(); legend(); refresh();
+})();
+</script>

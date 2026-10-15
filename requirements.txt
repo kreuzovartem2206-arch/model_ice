@@ -1,0 +1,9 @@
+numpy
+scipy
+pandas
+xarray
+netCDF4
+global-land-mask
+# для реальных данных
+cdsapi
+copernicusmarine
