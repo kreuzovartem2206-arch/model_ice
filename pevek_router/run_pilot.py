@@ -61,21 +61,25 @@ def run(env: xr.Dataset, out: Path, departures_h=(0, 24, 48, 72), verbose=True):
                         depart_time=str(env.time.values[k])[:16], variants=[])
             si, sj = grid.nearest_water(*pa[1:])
             if not router.NAV[k, si, sj]:
-                why = ("в пункте отхода лёд превышает ограничения класса Л2 для самостоятельного плавания "
+                why = ("в пункте отхода лёд превышает ограничения судна для самостоятельного плавания "
                        "— нужна ледокольная проводка")
             else:
-                why = "проход к пункту назначения перекрыт льдом сверх ограничений класса — нужна проводка"
+                why = ("по прогнозу проход к пункту назначения в пути перекрывается льдом сверх ограничений судна "
+                       f"(> {L2_SHIP.ice_c_max * 10:.0f} баллов или > {L2_SHIP.ice_h_max:.1f} м) — "
+                       "отход в этот срок не рекомендуется без ледокольной проводки")
             item["blocked_reason"] = None
+            n_ok = 0
             for st in strats:
                 r = router.solve(pa[1:], pb[1:], st, depart_k=k)
-                if r is None:
-                    item["blocked_reason"] = why
+                n_ok += r is not None
                 item["variants"].append(asdict(r) if r else dict(strategy=st.key, label=st.label, feasible=False,
                                                                   notes=[why]))
+            if n_ok == 0:
+                item["blocked_reason"] = why
             base = router.solve(pa[1:], pb[1:], strats[0], depart_k=k, distance_only=True)
             if base:
                 bd = asdict(base)
-                bd.update(strategy="shortest", label="Кратчайший, полный ход")
+                bd.update(strategy="shortest", label="Кратчайший проходимый, полный ход")
                 item["variants"].append(bd)
             results.append(item)
             if verbose:
@@ -109,13 +113,15 @@ def main():
     ap.add_argument("--synthetic", action="store_true")
     ap.add_argument("--env", help="NetCDF окружения (из fetch_data)")
     ap.add_argument("--out", default="out")
+    ap.add_argument("--departures", type=int, nargs="+", default=[0, 24, 48, 72],
+                    help="сроки отхода, ч от начала окружения")
     a = ap.parse_args()
     if a.synthetic or not a.env:
         from .synthetic import make_scenario
         env = make_scenario(make_grid())
     else:
         env = xr.open_dataset(a.env)
-    run(env, Path(a.out))
+    run(env, Path(a.out), departures_h=tuple(a.departures))
 
 
 if __name__ == "__main__":

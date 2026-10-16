@@ -4,3 +4,6 @@ data/
 out/
 *.nc
 .cdsapirc
+data_open/
+out_real/
+cache/

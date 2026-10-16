@@ -109,6 +109,17 @@ class Router:
                                                166.0 + dj * (grid.lon[1] - grid.lon[0]))))
         self._km_lat = km_lat
         self._cache = {}
+        # клетки, которые «задевает» отрезок каждого хода (2x2 окрестность точек вдоль отрезка)
+        self.sweep = []
+        for di, dj in MOVES:
+            cells = set()
+            for f in np.linspace(0, 1, 9):
+                y, x = f * di, f * dj
+                for oy in {int(np.floor(y + 1e-9)), int(np.ceil(y - 1e-9))}:
+                    for ox in {int(np.floor(x + 1e-9)), int(np.ceil(x - 1e-9))}:
+                        cells.add((oy, ox))
+            self.sweep.append(sorted(cells))
+        self._okmove = {}
         # numpy-копии полей для быстрых точечных обращений
         self.E = {v: np.nan_to_num(env[v].values) for v in env.data_vars}
         self.NAV = navigable(ship, self.E["sic"], self.E["sit"], self.E["hs"]) & ~grid.land[None]
@@ -128,6 +139,24 @@ class Router:
             res = tuple(np.asarray(a, np.float32) if a.dtype != bool else a for a in res)
             tab[(k, d)] = res
         return tab[(k, d)]
+
+    def ok_move(self, k, d):
+        """Булев массив: ход d из клетки (i, j) на сроке k проходит только по допустимым клеткам
+        (на сроке k и на следующем — с запасом на смену обстановки)."""
+        key = (k, d)
+        if key not in self._okmove:
+            ni, nj = self.grid.shape
+            k2 = min(k + 1, self.nt - 1)
+            nav = self.NAV[k] & self.NAV[k2]
+            ok = np.ones((ni, nj), bool)
+            for oy, ox in self.sweep[d]:
+                sh = np.zeros((ni, nj), bool)
+                ys, ye = max(0, -oy), min(ni, ni - oy)
+                xs, xe = max(0, -ox), min(nj, nj - ox)
+                sh[ys:ye, xs:xe] = nav[ys + oy:ye + oy, xs + ox:xe + ox]
+                ok &= sh
+            self._okmove[key] = ok
+        return self._okmove[key]
 
     def _static_nav(self):
         return ~self.grid.land
@@ -158,13 +187,8 @@ class Router:
                 ii, jj = i + di, j + dj
                 if not (0 <= ii < ni and 0 <= jj < nj) or land[ii, jj]:
                     continue
-                if abs(di) + abs(dj) == 3:  # ход конём: обе промежуточные клетки должны быть водой
-                    if abs(di) == 2:
-                        m1, m2 = (i + di // 2, j), (i + di // 2, j + dj)
-                    else:
-                        m1, m2 = (i, j + dj // 2), (i + di, j + dj // 2)
-                    if land[m1] or land[m2]:
-                        continue
+                if not self.ok_move(k, d)[i, j]:  # суша или лёд сверх ограничений на пути хода
+                    continue
                 L = self.lengths[d][i]
                 if distance_only:
                     s_m, _, c_m, _, nav = self._get(strat, k, d)
@@ -175,9 +199,6 @@ class Router:
                 else:
                     s_m, f_m, c_m, _, nav = self._get(strat, k, d)
                     if not (nav[i, j] and nav[ii, jj]):
-                        continue
-                    k_next = min(k + 1, self.nt - 1)  # запас: условия не должны «закрыться» к следующему сроку
-                    if not (self.NAV[k_next, i, j] and self.NAV[k_next, ii, jj]):
                         continue
                     nc = c + L * 0.5 * (c_m[i, j] + c_m[ii, jj])
                     nt = t + L * 0.5 * (s_m[i, j] + s_m[ii, jj])

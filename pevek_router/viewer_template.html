@@ -43,7 +43,7 @@ input[type=number]{width:110px;font-family:var(--f-data)}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed=true]{background:var(--accent);color:var(--panel)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;align-items:start}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:14px;align-items:start}
 @media (max-width:1000px){.main{grid-template-columns:minmax(0,1fr)}}
 .mapbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
 canvas{display:block;width:100%}
@@ -65,7 +65,7 @@ th,td{padding:6px 5px;text-align:right;border-bottom:1px solid var(--line);white
 th:first-child,td:first-child{text-align:left}
 th{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 td{font-family:var(--f-data);font-size:12.5px}
-td.name{font-family:var(--f-ui);font-weight:500;white-space:normal}
+td.name{font-family:var(--f-ui);font-weight:500;white-space:normal;min-width:150px}
 tbody tr{cursor:pointer}
 tbody tr[aria-selected=true]{background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .d{font-size:11px;display:block}
@@ -164,11 +164,14 @@ const state={route:null,dep:0,layer:'ice',t:0,sel:'balanced',playing:false};
 if((D.meta.source||'').toUpperCase().includes('SYNTHETIC')){
   const b=$('srcBanner'); b.hidden=false;
   b.textContent='Демо-сценарий: поля льда, ветра и волн синтетические (20–25 октября), они нужны для проверки конвейера и не описывают реальную обстановку. Для реального расчёта запустите загрузку ERA5 и Copernicus Marine.';
+} else if(D.meta.source){
+  const b=$('srcBanner'); b.hidden=false; b.classList.add('info');
+  b.textContent='Данные: '+D.meta.source.replace(/^REAL:\s*/,'')+'. Модель судна не откалибрована, это пилотный расчёт, а не навигационная рекомендация.';
 }
 
 // ---- судно
 const S=D.meta.ship;
-const shipRows=[['Класс',S.ice_class+' (≈ Ice2)'],['Длина × ширина × осадка',`${S.L} × ${S.B} × ${S.T} м`],['Главный двигатель',`${S.mcr_kw} кВт`],['Сдаточная скорость',`${S.v_service_kn} уз`],['Самостоятельно во льду',`до ${Math.round(S.ice_c_max*10)} баллов, ≤ ${S.ice_h_max} м`],['Предел по волне',`Hs ≤ ${S.hs_max} м`]];
+const shipRows=[['Ледовый класс',S.ice_class],['Длина × ширина × осадка',`${S.L} × ${S.B} × ${S.T} м`],['Главный двигатель',`${S.mcr_kw} кВт`],['Сдаточная скорость',`${S.v_service_kn} уз`],['Самостоятельно во льду',`до ${Math.round(S.ice_c_max*10)} баллов, ≤ ${S.ice_h_max} м`],['Предел по волне',`Hs ≤ ${S.hs_max} м`]];
 $('shipkv').innerHTML=shipRows.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
 
 // ---- селекторы
@@ -231,7 +234,7 @@ function render(){
   c.imageSmoothingEnabled=false; c.drawImage(offL,0,0,mapW,mapH);
   // сетка
   c.strokeStyle=css('--grid'); c.lineWidth=1; c.fillStyle=css('--muted'); c.font='11px '+css('--f-data');
-  for(let lo=154;lo<LON1;lo+=4){const [x]=proj(LAT0,lo); c.beginPath();c.moveTo(x,0);c.lineTo(x,mapH);c.stroke(); c.fillText(lo+'°',x+3,mapH-4);}
+  for(let lo=Math.ceil((LON0+1)/4)*4;lo<LON1;lo+=4){const [x]=proj(LAT0,lo); c.beginPath();c.moveTo(x,0);c.lineTo(x,mapH);c.stroke(); c.fillText(lo+'°',x+3,mapH-4);}
   for(let la=69;la<LAT1;la+=1){const [,y]=proj(la,LON0); c.beginPath();c.moveTo(0,y);c.lineTo(mapW,y);c.stroke(); c.fillText(la+'°N',3,y-3);}
   // стрелки ветра
   if(state.layer==='wind'){
@@ -278,7 +281,7 @@ function legend(){
     const st=state.layer==='hs'?HS_RAMP:W_RAMP, g=st.map(([x,c])=>`rgb(${c}) ${x*100}%`).join(',');
     L.innerHTML=`<span class="lbl">${state.layer==='hs'?'Значительная высота волн':'Скорость ветра 10 м'}</span><span>0</span><span class="ramp" style="background:linear-gradient(90deg,${g})"></span><span>${state.layer==='hs'?'6 м':'25 м/с'}</span>`;
   }
-  const names={fast:'Быстрый',balanced:'Сбалансированный',eco:'Экономичный',shortest:'Кратчайший, полный ход'};
+  const names={fast:'Быстрый',balanced:'Сбалансированный',eco:'Экономичный',shortest:'Кратчайший проходимый, полный ход'};
   $('rlegend').innerHTML=Object.entries(names).map(([k,n])=>`<span class="rkey"><span class="rline" style="border-color:var(${STRAT_COLOR[k]});${k==='shortest'?'border-top-style:dashed':''}"></span>${n}</span>`).join('');
 }
 
@@ -292,10 +295,13 @@ function table(){
   if(it.blocked_reason){box.innerHTML=`<div class="block"><strong>Самостоятельный рейс невозможен.</strong><br>${it.blocked_reason[0].toUpperCase()+it.blocked_reason.slice(1)}.</div>`;return;}
   const fp=+$('inFuel').value||0, day=+$('inDay').value||0, cost=v=>v.fuel_t*fp+v.hours*day/24;
   const base=it.variants.find(v=>v.strategy==='shortest');
-  const rows=it.variants.filter(v=>v.lat&&v.lat.length).map(v=>{
+  const rows=it.variants.map(v=>{
+    if(!(v.lat&&v.lat.length)) return `<tr data-k="${v.strategy}" aria-selected="false" tabindex="0">
+      <td class="name"><span class="rline" style="border-color:var(${STRAT_COLOR[v.strategy]});width:14px;margin-right:6px;vertical-align:4px"></span><span style="white-space:nowrap">${v.label}</span><span class="d" style="color:var(--bad);white-space:normal">нет прохода в этот срок</span></td>
+      <td colspan="3" style="text-align:left;white-space:normal;font-family:var(--f-ui);font-size:12px;color:var(--muted)">${(v.notes&&v.notes[0])||''}</td></tr>`;
     const vavg=v.dist_nm/v.hours;
     return `<tr data-k="${v.strategy}" aria-selected="${state.sel===v.strategy}" tabindex="0">
-      <td class="name"><span class="rline" style="border-color:var(${STRAT_COLOR[v.strategy]});${v.strategy==='shortest'?'border-top-style:dashed':''};width:14px;margin-right:6px;vertical-align:4px"></span><span style="white-space:nowrap">${v.label}</span><span class="d" style="color:var(--muted);font-family:var(--f-data)">${nf0.format(v.dist_nm)} миль · ${nf1.format(vavg)} уз</span></td>
+      <td class="name"><span class="rline" style="border-color:var(${STRAT_COLOR[v.strategy]});${v.strategy==='shortest'?'border-top-style:dashed':''};width:14px;margin-right:6px;vertical-align:4px"></span><span>${v.label}</span><span class="d" style="color:var(--muted);font-family:var(--f-data)">${nf0.format(v.dist_nm)} миль · ${nf1.format(vavg)} уз</span></td>
       <td>${nf1.format(v.hours)}${v.strategy!=='shortest'?delta(v.hours,base&&base.hours):''}</td>
       <td>${nf1.format(v.fuel_t)}${v.strategy!=='shortest'?delta(v.fuel_t,base&&base.fuel_t):''}</td>
       <td>${nf1.format(cost(v)/1000)}${v.strategy!=='shortest'&&base?delta(cost(v),cost(base)):''}</td>
@@ -340,7 +346,10 @@ function jumpToDep(){state.t=Math.min(nT-1,Math.round(state.dep/stepH)); $('tsli
 let timer=null;
 $('btnPlay').onclick=()=>{state.playing=!state.playing; $('btnPlay').textContent=state.playing?'❚❚ Пауза':'▶ Пуск';
   if(state.playing){timer=setInterval(()=>{state.t=(state.t+1)%nT; $('tslider').value=state.t; render(); profile();},450);} else clearInterval(timer);};
-function refresh(){table(); render(); profile();}
+function refresh(){
+  const it=currentItem();
+  if(it){const ok=v=>v&&v.lat&&v.lat.length; if(!ok(it.variants.find(x=>x.strategy===state.sel))){const f=it.variants.find(ok); if(f) state.sel=f.strategy;}}
+  table(); render(); profile();}
 let rz; window.addEventListener('resize',()=>{clearTimeout(rz); rz=setTimeout(()=>{sizeMap(); refresh();},120);});
 const mq=window.matchMedia('(prefers-color-scheme: dark)'); mq.addEventListener&&mq.addEventListener('change',()=>{sizeMap();refresh();legend();});
 new MutationObserver(()=>{sizeMap();refresh();legend();}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});

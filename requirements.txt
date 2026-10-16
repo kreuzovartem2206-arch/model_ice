@@ -7,3 +7,6 @@ global-land-mask
 # для реальных данных
 cdsapi
 copernicusmarine
+requests
+cfgrib
+eccodes
